@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Key revocation",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["fingerprint", "revokedAt", "reason"],
+  "properties": {
+    "fingerprint": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{16}$"
+    },
+    "revokedAt": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+    },
+    "reason": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9 ._-]{1,64}$"
+    },
+    "signature": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{128}$"
+    }
+  }
+}

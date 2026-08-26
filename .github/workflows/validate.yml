@@ -1,0 +1,87 @@
+name: Validate registry
+
+on:
+  pull_request:
+  schedule:
+    - cron: "17 5 * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  gate:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Set up python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install dependencies
+        run: pip install blake3 jsonschema pynacl
+
+      - name: Validate registry
+        run: python scripts/validate_registry.py
+
+      - name: Check pull request
+        env:
+          AUTHOR_ASSOCIATION: ${{ github.event.pull_request.author_association }}
+          BASE_REF: ${{ github.base_ref }}
+        run: python scripts/validate_registry.py --base "origin/$BASE_REF" --author-association "$AUTHOR_ASSOCIATION"
+
+  sweep:
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Refuse pull request flood
+        if: github.event_name != 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OPEN_LIMIT: "100"
+        run: |
+          set -u
+          open=$(gh pr list --state open --limit 500 --json number --jq 'length')
+          echo "open pull requests $open"
+          if [ "$open" -gt "$OPEN_LIMIT" ]; then
+            echo "sweep refused run manually"
+            exit 1
+          fi
+
+      - name: Set up python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install dependencies
+        run: pip install blake3 jsonschema pynacl
+
+      - name: Sweep every branch
+        run: |
+          set -u
+          failed=0
+          scanned=0
+          for branch in $(git for-each-ref --format='%(refname:short)' refs/remotes/origin | grep -v 'origin/HEAD$'); do
+            rm -rf keys revoked
+            mkdir keys revoked
+            git checkout --quiet "$branch" -- keys revoked 2>/dev/null || true
+            scanned=$((scanned + 1))
+            echo "branch $branch"
+            if ! python scripts/validate_registry.py; then
+              failed=1
+            fi
+          done
+          echo "branches scanned $scanned"
+          exit $failed
